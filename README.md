@@ -35,11 +35,12 @@ Due to different formats in which the input data stored separate preprocessing l
 
 4. Model
    - architecture:
-     U-Net architecture with MobileNetV2 backbone for image downsampling path was chosen, a few intermediate layers were picked as skips to connect downsampling and upsampling paths, the upsampling path itself was built using custom blocks with matching to skip connections shapes. Model's high-level overview:
+     U-Net architecture with MobileNetV2 (loaded from keras.applications package) backbone for image downsampling path was chosen, a few intermediate layers were picked as skips to connect downsampling and upsampling paths, the upsampling path itself was built using custom blocks with matching to skip connections shapes. Model's high-level overview:
      ![model](https://github.com/OMarchevska/airbus_ship_detection_challenge/assets/84033554/b0aa7f3f-8afd-4d33-b540-1e796946c46e)
-
+     The whole model only has 6M parameters and has an option of loading pretrained on imagenet dataset weights, which in fact were used in the training process. However, model has inputs size requirements of [224, 224, 3] and also input values must be [-1, 1] range. 
        
-   - loss
+   - loss:
+   Loss is one the crutial parts of model training, since it greatly impacts learning process. Considering that the objective is the dice score, we need to force model improve this objective, which can be achieved using dice loss, which is just (1 - dice score). However, domain investigation results on this topic suggested consider mixed loss function one that can handle strong data imbalance 
    - metrics
 
 5. Training
