@@ -53,7 +53,8 @@ The process of tackling this problem consists of several substeps:
    - architecture:
      Suggested model architecture for this task is U-Net, which is proven to work well with small to medium datasets. However, there can be different modifications to the original architecture, like different backbone models for image downsampling path, often with pretrained weights, which helps the model to converge faster and cuts training time. One of the general TensorFlow tutorials [2] was taken as a reference to create such a model. Here, the backbone is MobileNetV2 (loaded from keras.applications package) pretrained on imagenet dataset. Then matching custom image upsampling path is created and it is connected to a few intermediate layers from downsampling path to create skip connections. Model's high-level overview:
      ![model](https://github.com/OMarchevska/airbus_ship_detection_challenge/assets/84033554/b0aa7f3f-8afd-4d33-b540-1e796946c46e)
-     The whole model only has 6M parameters and it has inputs size requirements of [224, 224, 3] and also input values must be [-1, 1] range. The training dataset was prepared according to this requirements.
+
+The whole model only has 6M parameters and it has inputs size requirements of [224, 224, 3] and also input values must be [-1, 1] range. The training dataset was prepared according to this requirements.
 
    - metrics:
      The training objective is the dice score, which measures the similarity between predicted and ground truth masks. It is defined as twice the intersection of the predicted and ground truth masks divided by the sum of their sizes.
