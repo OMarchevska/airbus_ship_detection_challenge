@@ -1,12 +1,12 @@
-This repository is dedicated to the Airbus Ship Detection Challenge hosted by Kaggle:
+This repository is dedicated to the segmentation model training for Airbus Ship Detection Challenge hosted by Kaggle:
 - Task: Semantic Segmentation
 - Data: https://www.kaggle.com/competitions/airbus-ship-detection/data
 
 
-Required instrumets
+Required instrumets: requirements.txt
 
 Repository structure overview:
-1.
+1. 
 2. 
 3.
 
