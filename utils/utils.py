@@ -3,7 +3,7 @@ import numpy as np
 import tensorflow as tf
 
 
-def get_image_path_rle(df, target_dir=train_dir):
+def get_image_path_rle(df, target_dir=DF_PATH):
     """Extracts image paths and corresponding RLE-encoded masks from a DataFrame.
 
     Args:
@@ -231,3 +231,35 @@ class Augment(keras.layers.Layer):
         return (image, mask)
 
 
+def predict_mask(img_path, model, threshold=0.4):
+    """
+    Get single prediction from model given full path to the image
+    Returns: (image, predicted mask)
+    """
+    # load image
+    image = tf.keras.utils.load_img(img_path)
+    # convert to array
+    image_arr = tf.keras.utils.img_to_array(image)
+    # get shape
+    image_shape = image_arr.shape
+    # resize to the shape required by the model
+    rescaled = tf.image.resize(image_arr, [224, 224]) / 127.5 - 1
+    # predict mask for the image
+    pred_mask = model.predict(tf.expand_dims(rescaled, axis=0), verbose=0)
+    # apply thresholding
+    pred_mask = tf.cast(pred_mask > threshold, tf.int32)
+    # resize mask to the image original size
+    pred_mask = tf.image.resize(pred_mask, [image_shape[0], image_shape[1]])
+    # remove batch dimension
+    pred_mask = tf.squeeze(pred_mask)
+    return image, pred_mask
+
+def get_batch_preds(paths, model):
+    """
+    Get predictions for batch of images given list of paths to images and a model
+    Returns: list of (image, mask) pairs
+    """
+    preds = []
+    for path in paths:
+        preds.append(predict_mask(path, model))
+    return preds

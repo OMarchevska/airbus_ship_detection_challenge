@@ -7,26 +7,23 @@ import os
 import pandas as pd
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
-from utils import get_image_path_rle, get_dataset, 
+from utils import utils, metrics, losses 
 
-#### CONFIG: BATCH_SIZE...
-batch_size = 64
-epochs = 10
-steps_per_epoch = len(train_paths) // batch_size 
-learning_rate=1e-2
 
 ## Basic parameters
-base_dir = ""
+BASE_DIR = ""
 # images directory
-train_dir = os.path.join(base_dir, "train_v2")
+TRAIN_DIR = os.path.join(BASE_DIR, "data/train_v2")
 # target image segmentations file
-target_train = os.path.join(base_dir, "train_ship_segmentations_v2.csv")
-# test images
-test_dir = os.path.join(base_dir, "test_v2")
+DF_PATH = os.path.join(BASE_DIR, "data/train_ship_segmentations_v2.csv")
+# training hyperparameters
+BATCH_SIZE = 64
+EPOCHS = 10
+
 
 ## Data Preparation
 # load target segmentations file
-segmentations = pd.read_csv(target_train)
+segmentations = pd.read_csv(DF_PATH)
 # Group RLEs by 'ImageId' and aggregate them into lists
 grouped = segmentations.groupby('ImageId')['EncodedPixels'].agg(agg_rles).to_frame().reset_index()
 # cpunt the number of target objects for each image
@@ -37,18 +34,18 @@ null_mask = grouped["EncodedPixels"] == 0
 train_ids, valid_ids = train_test_split(grouped[~null_mask], test_size=0.1, random_state=42)
 
 # split into image paths and their corresponding RLEs
-train_paths, train_rles = get_image_path_rle(train_ids)
-valid_paths, valid_rles = get_image_path_rle(valid_ids)
+train_paths, train_rles = utils.get_image_path_rle(train_ids)
+valid_paths, valid_rles = utils.get_image_path_rle(valid_ids)
 
 # get batched training set
-train_ds = get_dataset(train_paths, train_rles, patch_size=256, batch_size=64)
+train_ds = utils.get_dataset(train_paths, train_rles, patch_size=256, batch_size=BATCH_SIZE)
 train_ds = train_ds.map(
-    Augment(), 
+    utils.Augment(), 
     num_parallel_calls=tf.data.AUTOTUNE
 ).prefetch(tf.data.AUTOTUNE).repeat()
 
 # prepare validation set normally
-valid_ds = get_dataset(valid_paths, valid_rles, patch_size=256, batch_size=64)
+valid_ds = utils.get_dataset(valid_paths, valid_rles, patch_size=256, batch_size=BATCH_SIZE)
 valid_ds = valid_ds.prefetch(tf.data.AUTOTUNE)
 
 ## Model Architecture
@@ -65,7 +62,7 @@ class Upsample(keras.layers.Layer):
         size (int or tuple of int): Size of the Conv2DTranspose convolutional kernel.
         name (str): Optional name for the layer.
         use_dropout (bool): Whether to apply dropout. Defaults to False.
-    """"
+    """
     def __init__(self, filters, size, name, use_dropout=False, **kwargs):
         super().__init__(name=name, **kwargs)
         self.filters = filters
@@ -162,35 +159,72 @@ class UNetMobile(keras.Model):
 ## Model pretraining
 # the optimal learning rate was found using log-LR/loss plot 
 # define and compile the model 
-unet_model = UNetMobile()
-unet_model.compile(loss=MixedLoss(), optimizer=Adam(learning_rate=1e-2), metrics=[DiceMetric()])
+model = UNetMobile()
+model.compile(loss=losses.MixedLoss(), optimizer=Adam(learning_rate=1e-2), metrics=[metrics.dice_score])
 
 # set up training callbacks
-model_path = "segmentator.keras"
+model_path = "models/model.keras"
 
-checkpoint = ModelCheckpoint(
+checkpoint = keras.callbacks.ModelCheckpoint(
     model_path, monitor='val_dice_score', 
     verbose=1, save_best_only=True, mode='max')
 
-reduce_on_pl = ReduceLROnPlateau(
-    monitor="val_dice_score", factor=0.5, patience=1, 
-    verbose=1, mode='max', epsilon=0.001, cooldown=2, min_lr=1e-6)
+reduce_on_pl = keras.callbacks.ReduceLROnPlateau(
+    monitor="val_dice_score", factor=0.2, patience=1, 
+    verbose=1, mode='max', epsilon=0.001, min_lr=1e-3
+)
 
 e_stop = EarlyStopping(monitor="val_dice_score", mode="max", patience=3)
 # all callbacks for model pretraining
 callbacks = [checkpoint, e_stop, reduce_on_pl]
+# training hyperparameters
+steps_per_epoch = len(train_paths) // BATCH_SIZE 
 # train the model 
-history = unet_model.fit(
+history = model.fit(
     train_ds,
     steps_per_epoch=steps_per_epoch,
-    epochs=5,
+    epochs=EPOCHS,
     validation_data=valid_ds,
-    batch_size=batch_size,
+    batch_size=BATCH_SIZE,
     callbacks=callbacks)
 
 
 ## Model Fine-Tuning
+# model is fine-tuned on full images, without cropping, only resizing and rescaling to [-1, 1]
+train_ds = utils.get_dataset(train_paths, train_rles, patch_size=None, batch_size=BATCH_SIZE)
+train_ds = train_ds.map(
+    utils.Augment(), 
+    num_parallel_calls=tf.data.AUTOTUNE
+).prefetch(tf.data.AUTOTUNE).repeat()
 
+valid_ds = utils.get_dataset(valid_paths, valid_rles, patch_size=None, batch_size=BATCH_SIZE)
+valid_ds = valid_ds.prefetch(tf.data.AUTOTUNE)
 
+# unfreeze downsampling layers except for BatchNormalization
+model.layers[1].trainable = True
+for layer in model.layers[1].layers:
+    if isinstance(layer, layers.BatchNormalization):
+        layer.trainable = False
+        
+# lower learning rate and compile       
+optimizer = keras.optimizers.Adam(learning_rate=1e-4)
+model.compile(loss=losses.MixedLoss(), optimizer=optimizer, metrics=[metrics.dice_score])
 
+# update learning rate scheduling factor, min_lr based on learning rate finder plot 
+reduce_on_pl = keras.callbacks.ReduceLROnPlateau(
+    monitor="val_dice_score", factor=0.5, patience=1, 
+    verbose=1, mode='max', epsilon=0.001, min_lr=5e-5
+)
 
+# update callbacks list
+callbacks = [checkpoint, e_stop, reduce_on_pl]
+
+# fine-tuning
+history = model.fit(
+    train_ds,
+    steps_per_epoch=steps_per_epoch,
+    epochs=EPOCHS,
+    validation_data=valid_ds,
+    batch_size=batch_size,
+    callbacks=callbacks,
+)
