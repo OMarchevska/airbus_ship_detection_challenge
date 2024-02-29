@@ -77,23 +77,29 @@ For this task the Mixed Loss is used, where the Dice Loss and Binary Focal Loss 
    - pretraining
      Since the model backbone was pretrained on the imagenet dataset, but the upsampling part of the model is not trained at all, we need to freeze trained weights in order to not to cause forgetting due to the large learning rate. First, the optimal learning rate needs to be established, which can be done using learning-rate/loss plot from the process of training model for just 1 epoch, dynamically changing model optimizer's learning rate and measuring model's losess obtained in the process. The code was borrowed  from Aurelien Geron github [4], but I slightly modified it to work with Keras 3 (my implementation code is located in the utils directory). Here is the generated plot :
      ![image](https://github.com/OMarchevska/airbus_ship_detection_challenge/assets/84033554/0cc19dcd-8c20-4c5d-a865-9d097f62ac2e)
+
 The plot gives a hint on the maximum learning rate (training starts diverging), the optimal learning rate is typically chosen to be 10 times lower. The model was pretrained for only 10 epochs using. To facilitate the process several callbacks were incorporated:
    1. ReduceLROnPlateau callback (was configured to decrease learning rate by a factor of 0.2 whenever it sees no progress on the validation score for 1 epoch, with initial learning rate set to 1e-2 and maximum learning rate 1e-3);
    2. ModelCheckpoint callback (saves the best model based on the validation score during the training);
    3. EarlyStopping callback (interrupt training completely if there is no progress on validation score for the 3 epochs)
+
 Optimizer - Adam is a default choice in most cases, in private runs was compared to a couple of other optimizers, which all performed almost identically good.
 
    - fine-tuning:
-     Model weights (except for BatchNormalization layer weights) were unfrozen, new optimal learning rate indentified and the fine-tuning process was conducted using the same setup as for model pretraining for N number of epochs. The final fine-tuned model is stored in models directory in .keras format.
+
+Model weights (except for BatchNormalization layer weights) were unfrozen, new optimal learning rate indentified and the fine-tuning process was conducted using the same setup as for model pretraining for N number of epochs. The final fine-tuned model is stored in models directory in .keras format.
      Learning rate / loss plot for fine-tuning:
      ![image](https://github.com/OMarchevska/airbus_ship_detection_challenge/assets/84033554/d9b14f6e-d7ca-434d-a45b-f8d01b62a2fb)
 
+
 7. Inference
    - data preparation:
-     Separate functions are created to read unlabeled data for inference process. Given there are images to test in the data/test_v2, test.py file generates masks for them and saves in the results directory. The is also Inference.ipynb file that essentially just helps visualize model predictions, notebook reads data from the data/test_v2 directory.
+
+Separate functions are created to read unlabeled data for inference process. Given there are images to test in the data/test_v2, test.py file generates masks for them and saves in the results directory. The is also Inference.ipynb file that essentially just helps visualize model predictions, notebook reads data from the data/test_v2 directory.
 
 
 8. Results:
+
 Despite having only 6M parameters model has dice score 0.83 on the validation set and 0.835 for the train set. Obviously, there is still room for the improvement, however given that model was trained on 224x224 images it is pretty good result.  
 
 
