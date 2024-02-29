@@ -27,16 +27,20 @@ The process of tackling this problem consists of several substeps:
      labels: images of size 768x768;
      targets: image masks that are stored in numerical form in a file train_ship_segmentations_v2.csv; 
    - data overview:
+
      The preliminary data overview showed strong data imbalance, where the number of images with no targets to segment (150000 images (78.0% of the total data)) is substantially higher than images that contain targets (42556 images (22.0%)). The total number of data entries is 231723, where the number of unique images is 192556, which means that some images contain multiple objects to segment. Moreover, the targets themselves most of the time do not take up more than 1-2% of the total image pixels. Problem domain investigation results suggested to discard all the "blank" images and continue with only "target-containing" ones. This allows significantly decrease training time and balances the training data. The pixel imbalance can be alleviated by subsequent image transformations, for example using cropping.
 
 
 3. Data Preprocessing:
    - preliminary source preprocessing:
-      The image paths with the corresponding mask encodings (RLEs) are stored in a train_ship_segmentations_v2.csv which is read into a pandas DataFrame. Then the dataframe is transformed by grouping RLEs by "ImageId" which are aggregated into lists of RLEs, where one row of data corresponds to the following information:
+
+The image paths with the corresponding mask encodings (RLEs) are stored in a train_ship_segmentations_v2.csv which is read into a pandas DataFrame. Then the dataframe is transformed by grouping RLEs by "ImageId" which are aggregated into lists of RLEs, where one row of data corresponds to the following information:
         1. "ImageId" (unique image name);
         2. "EncodedPixels": list of lists of encoded target objects (if image contains any), "0" if there is no target objects.
+        
    - training / validation splits generation:
-      Splits were created based on grouped DataFrame "ImageId" column using sklearns train_test_split() function using 90/10 split for training and validation set correspondingly.
+
+Splits were created based on grouped DataFrame "ImageId" column using sklearns train_test_split() function using 90/10 split for training and validation set correspondingly.
   
    - data preprocessing:
 Due to different formats in which the input data stored, separate preprocessing logic must be incorporated to load and process both images and label and then combine the pairs into training instances. To solve this task tf.data.Dataset.from_generator() is used with custom function to read and prepare data on the fly. First transformed DataFrame is split by columns into 2 lists: image paths (for each image id the full path where image is located is created) and RLEs list of lists. Then, for each (image path, rle list) generator creates a training instance by: image is read, decoded, converted to tf.float32 data type; mask is created for a given image; if specified, a patch is cropped from an image and its mask; image and mask are resized to specific size if the size provided; image is normalized to [-1, 1] range (requirements of the chosen model for this task).
@@ -44,7 +48,9 @@ Due to different formats in which the input data stored, separate preprocessing 
    - data augmentation:
 In order to decrease the risk of overfitting and boost model's ability to geberalize data aumentation technique was used. All the augmentations were united under one custom class, which includes simple random horizontal/vertical flip (must be applied simultaneously to both image and its mask, therefore "seed" hyperameter was provided) and random brightness applied to the image.
      
-6. Data Pipelines:
+
+4. Data Pipelines:
+
    Separate tf.data Datasets are set up for both training and validation:
     - train_ds: 1) generator yields batch of preprocessed training instances; 2) augmentations are applied using map() function; 3) dataset prefetching for performance; 4) repeating (for continuous data streaming during model training);
     - valid_ds: 1) generator yields batch of preprocessed training instances; 2) dataset prefetching;
@@ -64,7 +70,7 @@ The whole model only has 6M parameters and it has inputs size requirements of [2
 For this task the Mixed Loss is used, where the Dice Loss and Binary Focal Loss are combined and scaled to bring them to the same faces. Additionally we must take the logarithm of the Dice Loss which boosts the loss for the cases when the objects are not detected correctly and dice is close to zero. 
 
 
-7. Training
+6. Training
    - baseline:
      Model was evaluared on the validation set prior to training:      (Dice Coefficient)
      
@@ -82,44 +88,13 @@ Optimizer - Adam is a default choice in most cases, in private runs was compared
      Learning rate / loss plot for fine-tuning:
      ![image](https://github.com/OMarchevska/airbus_ship_detection_challenge/assets/84033554/d9b14f6e-d7ca-434d-a45b-f8d01b62a2fb)
 
-9. Inference
+7. Inference
    - data preparation:
-     Separate functions are created to read unlabeled data for inference process. Given there are images to test in the data/test_v2, test.py file generates masks for them and saves in the results directory.
-  
+     Separate functions are created to read unlabeled data for inference process. Given there are images to test in the data/test_v2, test.py file generates masks for them and saves in the results directory. The is also Inference.ipynb file that essentially just helps visualize model predictions, notebook reads data from the data/test_v2 directory.
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+8. Results:
+Despite having only 6M parameters model has dice score 0.83 on the validation set and 0.835 for the train set. Obviously, there is still room for the improvement, however given that model was trained on 224x224 images it is pretty good result.  
 
 
 
